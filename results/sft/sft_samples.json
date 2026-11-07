@@ -1,0 +1,37 @@
+[
+  {
+    "index": 1,
+    "prompt_tail": "e ... also I'm big on comuncating my feelings , but I'm petrified telling him his words hurt me, will result in another fight like yesterday's one. What should I do ? Because at this point I really just want to be done with him and move on ...\nTL;DR:",
+    "human_reference": "Boyfriend said some would stuff to me and I am so deeply hurt by them, but I'm scared bringing it up will result in another argument in which he ruins me once more.",
+    "summary_before_sft": "I'm not going to tell him I'm sorry, I'm not going to tell him I'm sorry, I'm not going to tell him I'm sorry, I'm not going to tell him I'm sorry, I'm not going",
+    "summary_after_sft": "boyfriend said hurtful things to me, I'm petrified to tell him what he said, I want to hurt him and move on, but I'm afraid to."
+  },
+  {
+    "index": 2,
+    "prompt_tail": "ng I do, so I was just wondering if it would be ok to just straight up ask her to be my girlfriend. I've picked out somewhere private and something meaningful to say. Should I do it? Is this the best approach to the situation I'm dealing with.\nTL;DR:",
+    "human_reference": "If we both know we like each other, and have really hit it off, can I just straight up ask her to be my girlfriend?",
+    "summary_before_sft": "I'm not sure if I should ask her to be my girlfriend or not.\n\nI'm not sure if I should ask her to be my girlfriend.\n\nI'm not sure if I should ask her to be my girlfriend.",
+    "summary_after_sft": "I've been assured that a girl has the same feeling I have, is it alright to just ask her to be my girlfriend?"
+  },
+  {
+    "index": 3,
+    "prompt_tail": "s really hard to realize for me that she\u00b4s gone.  \nI tried to talk to her but she just said \"just let it be\"..  \n  \nShould i keep trying to talk her?Should i just wait?Maybe she will talk to me after some time?Can it be that she has a new one?\nTL;DR:",
+    "human_reference": "Girlfriend broke up and told me \"its her fault,i cant love,im not able to bond\"",
+    "summary_before_sft": "I am not able to love her anymore.\n\nI am not able to love her anymore.\n\nI am not able to love her anymore.\n\nI am not able to love her anymore.\n\nI am not able",
+    "summary_after_sft": "ex broke up with me because she cant love. I dont know if she is able to love or not."
+  },
+  {
+    "index": 4,
+    "prompt_tail": "n or Charles Schwab? I've heard good things on this sub for both options.\n\nMain Questions:  \n1. Can I keep my savings account and credit card with BoA and just close my checking?  \n2. What are the pros/cons of credit unions and Charles Schwab?\nTL;DR:",
+    "human_reference": "I want to close my BoA checking account, but keep my savings and credit card with them. Is this possible? And, which is better: a credit union or Charles Schwab?",
+    "summary_before_sft": "I'm not sure what to do. I'm not sure if I should keep my savings account or not. I'm not sure if I should keep my credit card or not. I'm not sure if I should keep my checking account or",
+    "summary_after_sft": "I'm banking with BoA and want to close my checking account with them. What are the pros/cons of credit unions and Charles Schwab?"
+  },
+  {
+    "index": 5,
+    "prompt_tail": "mean she will be back? When am I suppoed to talk to her again. This heartache and depression is eating me from the inside, and since I have been cheated on in the past, I am only assuming the worst and that somebody else could be on the scene?\nTL;DR:",
+    "human_reference": "GF broke up with me, Don't know if she will be back or not? We have a holiday booked, should I be expecting her to come? Or should I just not go atal/go on my own?",
+    "summary_before_sft": "I am not sure if I should hold out or not. I am not sure if I should be able to talk to her again.\n\nI am not sure if I should be able to talk to her again. I am not sure",
+    "summary_after_sft": "GF broke up with me, we have a holiday booked, should I hold out?"
+  }
+]
