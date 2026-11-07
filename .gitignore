@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+checkpoints/
+*.pt
+*.bin
+*.safetensors
+.cache/
+.modal/
+eval_summaries.jsonl
