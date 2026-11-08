@@ -1,0 +1,70 @@
+{
+  "table1": [
+    {
+      "Model": "Base",
+      "ROUGE-1": 18.68,
+      "ROUGE-2": 4.77,
+      "ROUGE-L": 15.47,
+      "Mean Length": 48.0,
+      "Mean Reward": -1.396
+    },
+    {
+      "Model": "SFT",
+      "ROUGE-1": 32.04,
+      "ROUGE-2": 11.93,
+      "ROUGE-L": 25.42,
+      "Mean Length": 30.4,
+      "Mean Reward": 0.352
+    },
+    {
+      "Model": "PPO",
+      "ROUGE-1": 23.59,
+      "ROUGE-2": 5.29,
+      "ROUGE-L": 17.54,
+      "Mean Length": 48.0,
+      "Mean Reward": 0.513
+    },
+    {
+      "Model": "DPO",
+      "ROUGE-1": 31.19,
+      "ROUGE-2": 10.35,
+      "ROUGE-L": 22.88,
+      "Mean Length": 45.9,
+      "Mean Reward": 2.655
+    },
+    {
+      "Model": "Human Reference",
+      "ROUGE-1": 100.0,
+      "ROUGE-2": 100.0,
+      "ROUGE-L": 100.0,
+      "Mean Length": 32.8,
+      "Mean Reward": 1.008
+    }
+  ],
+  "win_rate_matrix": {
+    "Base": {
+      "Base": 50.0,
+      "SFT": 12.0,
+      "PPO": 11.33,
+      "DPO": 0.67
+    },
+    "SFT": {
+      "Base": 87.0,
+      "SFT": 50.0,
+      "PPO": 44.67,
+      "DPO": 3.33
+    },
+    "PPO": {
+      "Base": 88.67,
+      "SFT": 55.33,
+      "PPO": 50.0,
+      "DPO": 4.67
+    },
+    "DPO": {
+      "Base": 99.33,
+      "SFT": 96.33,
+      "PPO": 95.0,
+      "DPO": 50.0
+    }
+  }
+}

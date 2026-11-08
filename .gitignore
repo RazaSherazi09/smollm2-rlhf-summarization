@@ -1,10 +1,57 @@
-.venv/
+# Byte-compiled / optimized / ambient Python files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+
+# Environments & Packaging
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Model Checkpoints & Large Binary Weights (Enforce GitHub 100MB limit)
 checkpoints/
 *.pt
+*.pth
 *.bin
 *.safetensors
-.cache/
-.modal/
+*.onnx
+*.msgpack
+
+# Cached Datasets & Local Storage Volumes
+data/
+*.parquet
+*.arrow
+*.h5
+*.tar.gz
+*.zip
 eval_summaries.jsonl
+
+# Hugging Face & Cloud Provider Caches
+.cache/
+hf_cache/
+.huggingface/
+.modal/
+.modal.toml
+
+# Environment Variables & Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Operating System & Editor Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Execution Logs
+*.log

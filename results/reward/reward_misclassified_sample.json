@@ -1,0 +1,32 @@
+[
+  {
+    "prompt_tokens": 238,
+    "r_chosen": 1.6719,
+    "r_rejected": 2.5469,
+    "score_diff": -0.875
+  },
+  {
+    "prompt_tokens": 415,
+    "r_chosen": 1.3594,
+    "r_rejected": 1.5,
+    "score_diff": -0.1406
+  },
+  {
+    "prompt_tokens": 381,
+    "r_chosen": 1.8906,
+    "r_rejected": 2.9062,
+    "score_diff": -1.0156
+  },
+  {
+    "prompt_tokens": 321,
+    "r_chosen": 3.1719,
+    "r_rejected": 3.5469,
+    "score_diff": -0.375
+  },
+  {
+    "prompt_tokens": 400,
+    "r_chosen": 1.7344,
+    "r_rejected": 2.7188,
+    "score_diff": -0.9844
+  }
+]

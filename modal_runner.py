@@ -13,6 +13,7 @@ image = (
         "rouge-score",
         "matplotlib",
         "numpy",
+        "tqdm",
     )
     .env({
         "HF_HOME": "/vol/hf_cache",
@@ -24,6 +25,7 @@ image = (
     .add_local_file("train_reward.py", "/root/train_reward.py")
     .add_local_file("train_ppo.py", "/root/train_ppo.py")
     .add_local_file("train_dpo.py", "/root/train_dpo.py")
+    .add_local_file("evaluate.py", "/root/evaluate.py")
 )
 
 @app.function(
@@ -32,23 +34,24 @@ image = (
     volumes={"/vol": volume},
     timeout=2400,
 )
-def run_stage4_dpo():
-    from train_dpo import train_dpo
+def run_evaluation():
+    from evaluate import run_full_evaluation
 
-    print("Launching Stage 4: DPO on Modal A10G GPU...")
-    metrics = train_dpo()
+    print("Launching Task 6 Evaluation on Modal A10G GPU...")
+    table1, win_rates = run_full_evaluation()
 
-    # Commit checkpoints, Figure 4, and metrics to persistent volume
+    # Commit evaluation tables, metrics, and JSONL to persistent volume
     volume.commit()
-    print("DPO checkpoint, plots, and metrics committed to /vol.")
-    return metrics
+    print("Evaluation deliverables committed to /vol.")
+    return table1, win_rates
 
 @app.local_entrypoint()
 def main():
-    metrics = run_stage4_dpo.remote()
-    print("\n--- DPO Training Finished Successfully ---")
-    print(f"Final Train Loss:        {metrics['final_train_loss']:.4f}")
-    print(f"Final Val Loss:          {metrics['final_val_loss']:.4f}")
-    print(f"Implicit Reward Acc:     {metrics['final_implicit_accuracy'] * 100:.2f}%")
-    print(f"Duration:                {metrics['total_time_seconds']}s")
-    print(f"GPU:                     {metrics['gpu']}")
+    table1, win_rates = run_evaluation.remote()
+    print("\n=================== TASK 6: TABLE 1 RESULTS ===================")
+    for row in table1:
+        print(f"{row['Model']:<16} | R1: {row['ROUGE-1']:<5} | R2: {row['ROUGE-2']:<5} | RL: {row['ROUGE-L']:<5} | Len: {row['Mean Length']:<4} | RM: {row['Mean Reward']:+.3f}")
+    
+    print("\n================= TASK 6: WIN RATE MATRIX (%) =================")
+    for m, opponents in win_rates.items():
+        print(f"{m:<6} vs SFT: {opponents.get('SFT', '-'):>5}% | vs Base: {opponents.get('Base', '-'):>5}% | vs DPO: {opponents.get('DPO', '-'):>5}%")
