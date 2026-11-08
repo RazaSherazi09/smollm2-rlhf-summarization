@@ -1,5 +1,6 @@
 import os
 import html
+import gc
 
 import streamlit as st
 import torch
@@ -221,12 +222,6 @@ st.markdown(
     }
 
     /* Form panel */
-    .form-panel {
-        background:var(--white);
-        border:2px solid var(--ink);
-        box-shadow:6px 6px 0 var(--ink);
-        padding:24px;
-    }
     .form-panel-top {
         display:flex; justify-content:space-between;
         padding-bottom:14px; margin-bottom:16px;
@@ -251,23 +246,6 @@ st.markdown(
         border:2px solid var(--pink)!important;
         box-shadow:3px 3px 0 var(--pink)!important;
     }
-    [data-testid="stRadio"] > label {
-        color:var(--ink)!important; font-weight:700!important;
-        font-size:12px!important;
-    }
-    [data-testid="stRadio"] [role="radiogroup"] {
-        gap:8px;
-    }
-    [data-testid="stRadio"] [role="radio"] {
-        background:var(--paper);
-        border:1.5px solid var(--ink);
-        padding:10px 13px;
-        border-radius:0;
-    }
-    [data-testid="stRadio"] [role="radio"]:has(input:checked) {
-        background:var(--yellow);
-        box-shadow:3px 3px 0 var(--ink);
-    }
     .stButton > button {
         background:var(--pink)!important;
         color:var(--ink)!important;
@@ -285,7 +263,6 @@ st.markdown(
         box-shadow:2px 2px 0 var(--ink)!important;
         color:var(--ink)!important;
     }
-    .stButton > button:focus { color:var(--ink)!important; }
 
     /* Results */
     .results-heading {
@@ -400,7 +377,7 @@ st.markdown(
 
 
 # ============================================================
-# MODEL IMPLEMENTATION
+# MODEL & INFERENCE HELPERS (MEMORY OPTIMIZED)
 # ============================================================
 
 class RewardModel(nn.Module):
@@ -427,6 +404,7 @@ class RewardModel(nn.Module):
 
 
 def resolve_model_path(stage_subfolder):
+    """Locates local checkpoint or downloads from Hugging Face Hub."""
     local_path = os.path.join("checkpoints", stage_subfolder)
     if os.path.exists(local_path) and os.listdir(local_path):
         return local_path
@@ -442,49 +420,23 @@ def resolve_model_path(stage_subfolder):
 
 
 @st.cache_resource(show_spinner=False)
-def load_all_models():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+def get_tokenizer():
+    """Caches only the tokenizer (~5MB) to keep startup instant and memory tiny."""
+    tok = AutoTokenizer.from_pretrained(BASE_MODEL)
+    if tok.pad_token_id is None:
+        tok.pad_token = tok.eos_token
+    return tok
 
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token = tokenizer.eos_token
 
-    sft_path = resolve_model_path("sft")
-    ppo_path = resolve_model_path("ppo")
-    dpo_path = resolve_model_path("dpo")
-    reward_path = resolve_model_path("reward")
-
-    sft_model = AutoModelForCausalLM.from_pretrained(
-        sft_path, torch_dtype=torch.float32
+def run_single_model_generation(stage_name, prompt_text, tokenizer, device):
+    """Loads one model, generates its summary, and frees RAM immediately."""
+    model_path = resolve_model_path(stage_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        torch_dtype=torch.float32,
+        low_cpu_mem_usage=True,
     ).to(device).eval()
 
-    ppo_model = AutoModelForCausalLM.from_pretrained(
-        ppo_path, torch_dtype=torch.float32
-    ).to(device).eval()
-
-    dpo_model = AutoModelForCausalLM.from_pretrained(
-        dpo_path, torch_dtype=torch.float32
-    ).to(device).eval()
-
-    # Independent backbone: loading reward weights must not mutate SFT.
-    reward_backbone = AutoModelForCausalLM.from_pretrained(
-        sft_path, torch_dtype=torch.float32
-    )
-    reward_model = RewardModel(reward_backbone).to(device).eval()
-
-    weights_file = os.path.join(reward_path, "reward_model.pt")
-    if not os.path.exists(weights_file):
-        raise FileNotFoundError(f"Reward weights not found: {weights_file}")
-
-    state = torch.load(
-        weights_file, map_location=device, weights_only=True
-    )
-    reward_model.load_state_dict(state, strict=True)
-
-    return tokenizer, sft_model, ppo_model, dpo_model, reward_model, device
-
-
-def generate_summary(model, tokenizer, prompt_text, device):
     inputs = tokenizer(
         prompt_text,
         return_tensors="pt",
@@ -509,24 +461,51 @@ def generate_summary(model, tokenizer, prompt_text, device):
     if "<|endoftext|>" in text:
         text = text.split("<|endoftext|>")[0]
 
+    # Explicit memory cleanup
+    del model, inputs, output, generated
+    gc.collect()
+
     return text.strip()
 
 
-def compute_reward_score(reward_model, tokenizer, prompt, summary, device):
-    full_text = prompt.strip() + " " + summary.strip() + "<|endoftext|>"
-    inputs = tokenizer(
-        full_text,
-        return_tensors="pt",
-        truncation=True,
-        max_length=MAX_REWARD_LENGTH,
-    ).to(device)
+def score_summaries_with_reward_model(prompt_text, summary_list, tokenizer, device):
+    """Loads Reward Model, evaluates all three summaries, and frees RAM immediately."""
+    sft_path = resolve_model_path("sft")
+    reward_path = resolve_model_path("reward")
 
-    with torch.no_grad():
-        score = reward_model(
-            inputs["input_ids"], inputs["attention_mask"]
-        ).item()
+    reward_backbone = AutoModelForCausalLM.from_pretrained(
+        sft_path,
+        torch_dtype=torch.float32,
+        low_cpu_mem_usage=True,
+    )
+    reward_model = RewardModel(reward_backbone).to(device).eval()
 
-    return round(score, 3)
+    weights_file = os.path.join(reward_path, "reward_model.pt")
+    if not os.path.exists(weights_file):
+        raise FileNotFoundError(f"Reward weights not found: {weights_file}")
+
+    state = torch.load(weights_file, map_location=device, weights_only=True)
+    reward_model.load_state_dict(state, strict=True)
+
+    scores = []
+    for summary in summary_list:
+        full_text = prompt_text.strip() + " " + summary.strip() + "<|endoftext|>"
+        inputs = tokenizer(
+            full_text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=MAX_REWARD_LENGTH,
+        ).to(device)
+
+        with torch.no_grad():
+            s = reward_model(inputs["input_ids"], inputs["attention_mask"]).item()
+        scores.append(round(s, 3))
+
+    # Explicit memory cleanup
+    del reward_model, reward_backbone, state
+    gc.collect()
+
+    return scores
 
 
 # ============================================================
@@ -602,20 +581,11 @@ st.markdown(
 
 
 # ============================================================
-# LOAD MODELS
+# INITIALIZE TOKENIZER & DEVICE
 # ============================================================
 
-try:
-    with st.spinner("Loading model checkpoints..."):
-        tokenizer, sft_model, ppo_model, dpo_model, reward_model, device = load_all_models()
-except Exception as error:
-    st.error(
-        "Model initialization failed. Check the Hugging Face repository, "
-        "checkpoint folders, and installed dependencies."
-    )
-    with st.expander("Technical details"):
-        st.exception(error)
-    st.stop()
+device = "cuda" if torch.cuda.is_available() else "cpu"
+tokenizer = get_tokenizer()
 
 
 # ============================================================
@@ -688,7 +658,7 @@ with st.container(border=True):
 
 
 # ============================================================
-# GENERATION
+# GENERATION (ON-DEMAND SEQUENTIAL EXECUTION)
 # ============================================================
 
 if "comparison_results" not in st.session_state:
@@ -698,33 +668,29 @@ if generate_button:
     formatted_prompt = user_post.strip() + "\nTL;DR:"
 
     try:
-        progress = st.progress(0, text="Preparing inference...")
-        with st.spinner("Generating and evaluating model outputs..."):
-            sft_summary = generate_summary(
-                sft_model, tokenizer, formatted_prompt, device
-            )
-            progress.progress(25, text="SFT summary generated")
+        progress = st.progress(0, text="Generating SFT summary...")
+        
+        # 1. SFT Inference
+        sft_summary = run_single_model_generation("sft", formatted_prompt, tokenizer, device)
+        progress.progress(25, text="Generating PPO summary...")
 
-            ppo_summary = generate_summary(
-                ppo_model, tokenizer, formatted_prompt, device
-            )
-            progress.progress(50, text="PPO summary generated")
+        # 2. PPO Inference
+        ppo_summary = run_single_model_generation("ppo", formatted_prompt, tokenizer, device)
+        progress.progress(50, text="Generating DPO summary...")
 
-            dpo_summary = generate_summary(
-                dpo_model, tokenizer, formatted_prompt, device
-            )
-            progress.progress(75, text="DPO summary generated")
+        # 3. DPO Inference
+        dpo_summary = run_single_model_generation("dpo", formatted_prompt, tokenizer, device)
+        progress.progress(75, text="Evaluating reward scores...")
 
-            sft_score = compute_reward_score(
-                reward_model, tokenizer, formatted_prompt, sft_summary, device
-            )
-            ppo_score = compute_reward_score(
-                reward_model, tokenizer, formatted_prompt, ppo_summary, device
-            )
-            dpo_score = compute_reward_score(
-                reward_model, tokenizer, formatted_prompt, dpo_summary, device
-            )
-            progress.progress(100, text="Evaluation complete")
+        # 4. Reward Model Scoring
+        scores = score_summaries_with_reward_model(
+            formatted_prompt,
+            [sft_summary, ppo_summary, dpo_summary],
+            tokenizer,
+            device,
+        )
+        sft_score, ppo_score, dpo_score = scores
+        progress.progress(100, text="Evaluation complete!")
 
         st.session_state.comparison_results = {
             "sft_summary": sft_summary,
