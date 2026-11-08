@@ -23,6 +23,7 @@ image = (
     .add_local_file("train_sft.py", "/root/train_sft.py")
     .add_local_file("train_reward.py", "/root/train_reward.py")
     .add_local_file("train_ppo.py", "/root/train_ppo.py")
+    .add_local_file("train_dpo.py", "/root/train_dpo.py")
 )
 
 @app.function(
@@ -31,24 +32,23 @@ image = (
     volumes={"/vol": volume},
     timeout=2400,
 )
-def run_stage3_ppo():
-    from train_ppo import train_ppo
+def run_stage4_dpo():
+    from train_dpo import train_dpo
 
-    print("Launching Stage 3: PPO on Modal A10G GPU...")
-    metrics = train_ppo()
+    print("Launching Stage 4: DPO on Modal A10G GPU...")
+    metrics = train_dpo()
 
-    # Commit checkpoints, Figure 3, and metrics to persistent volume
+    # Commit checkpoints, Figure 4, and metrics to persistent volume
     volume.commit()
-    print("PPO checkpoint, plots, and metrics committed to /vol.")
+    print("DPO checkpoint, plots, and metrics committed to /vol.")
     return metrics
 
 @app.local_entrypoint()
 def main():
-    metrics = run_stage3_ppo.remote()
-    print("\n--- PPO Training Finished Successfully ---")
-    print(f"Final Mean Reward:    {metrics['final_mean_reward']:+.4f}")
-    print(f"Final Mean KL:        {metrics['final_mean_kl']:.4f}")
-    print(f"Final Mean Length:    {metrics['final_mean_length']:.1f} tokens")
-    print(f"Final Clip Fraction:  {metrics['final_clip_fraction'] * 100:.2f}%")
-    print(f"Duration:             {metrics['total_time_seconds']}s")
-    print(f"GPU:                  {metrics['gpu']}")
+    metrics = run_stage4_dpo.remote()
+    print("\n--- DPO Training Finished Successfully ---")
+    print(f"Final Train Loss:        {metrics['final_train_loss']:.4f}")
+    print(f"Final Val Loss:          {metrics['final_val_loss']:.4f}")
+    print(f"Implicit Reward Acc:     {metrics['final_implicit_accuracy'] * 100:.2f}%")
+    print(f"Duration:                {metrics['total_time_seconds']}s")
+    print(f"GPU:                     {metrics['gpu']}")
