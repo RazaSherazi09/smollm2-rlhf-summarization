@@ -93,9 +93,9 @@ All four model variants are reported as evaluated on the same 300 held-out posts
 - `temperature = 0.0` (greedy decoding; temperature is effectively irrelevant when sampling is disabled)
 - Stop at ` <|endoftext|> ` when that token is emitted
 
-ROUGE-1, ROUGE-2, and ROUGE-L are reported as percentages. Mean generated length is measured in tokens. Mean reward is calculated using the trained reward model, denoted by \(r_\phi\).
+ROUGE-1, ROUGE-2, and ROUGE-L are reported as percentages. Mean generated length is measured in tokens. Mean reward is calculated using the trained reward model, denoted by $r_\phi$.
 
-> **Evaluation interpretation:** ROUGE measures reference overlap, whereas \(r_\phi\) measures the output according to the learned reward model. Neither metric alone establishes human-perceived summary quality. A reward-model score higher than the score assigned to a human reference is not proof that the generated summary is better than the human summary; it may also reflect reward-model miscalibration or exploitable artifacts.
+> **Evaluation interpretation:** ROUGE measures reference overlap, whereas $r_\phi$ measures the output according to the learned reward model. Neither metric alone establishes human-perceived summary quality. A reward-model score higher than the score assigned to a human reference is not proof that the generated summary is better than the human summary; it may also reflect reward-model miscalibration or exploitable artifacts.
 
 ## 3. Methodology
 
@@ -103,38 +103,38 @@ The stages below follow the actual dependency order of the experiment: SFT provi
 
 ### 3.1 Stage 1 — Supervised Fine-Tuning (SFT)
 
-The base model is fine-tuned to generate a summary \(y=(y_1,\ldots,y_T)\) conditioned on a post \(x=(x_1,\ldots,x_P)\). Training minimizes causal language-model cross-entropy over summary tokens only:
+The base model is fine-tuned to generate a summary $y=(y_1,\ldots,y_T)$ conditioned on a post $x=(x_1,\ldots,x_P)$. Training minimizes causal language-model cross-entropy over summary tokens only:
 
-\[
+$$
 \mathcal{L}_{\mathrm{SFT}}(\theta)
 = -\frac{1}{|y|}\sum_{t=1}^{T}
 \log \pi_\theta(y_t\mid x,y_{<t}).
-\]
+$$
 
 Prompt positions and right-padding positions are excluded from the loss. The target sequence is shifted so that each prediction is conditioned only on preceding tokens. The resulting SFT checkpoint is used as the initialization for the reward model, PPO policy, PPO reference policy, and DPO policy/reference setup.
 
 ### 3.2 Stage 2 — Bradley–Terry Reward Modeling
 
-The reward model is initialized from the transformer body of the SFT checkpoint and augmented with a scalar linear reward head. Let \(h_T\) denote the final hidden representation at the last non-padding token and let \(W_v\in\mathbb{R}^{H\times 1}\) be the projection weights. The scalar reward is:
+The reward model is initialized from the transformer body of the SFT checkpoint and augmented with a scalar linear reward head. Let $h_T$ denote the final hidden representation at the last non-padding token and let $W_v\in\mathbb{R}^{H\times 1}$ be the projection weights. The scalar reward is:
 
-\[
+$$
 r_\phi(x,y)=W_v^\top h_T.
-\]
+$$
 
-For each prompt, the dataset supplies a preferred summary \(y_w\) and a rejected summary \(y_l\). Under the Bradley–Terry model, the probability that the preferred response is ranked above the rejected response is:
+For each prompt, the dataset supplies a preferred summary $y_w$ and a rejected summary $y_l$. Under the Bradley–Terry model, the probability that the preferred response is ranked above the rejected response is:
 
-\[
+$$
 P(y_w\succ y_l\mid x)
 =\sigma\big(r_\phi(x,y_w)-r_\phi(x,y_l)\big).
-\]
+$$
 
 The reward model is trained by minimizing the pairwise negative log-likelihood:
 
-\[
+$$
 \mathcal{L}_{\mathrm{RM}}(\phi)
 =-\mathbb{E}_{(x,y_w,y_l)}
 \left[\log\sigma\left(r_\phi(x,y_w)-r_\phi(x,y_l)\right)\right].
-\]
+$$
 
 The trained reward model supplies scalar feedback to PPO and is also used for the reward-based comparisons reported in the evaluation section.
 
@@ -142,51 +142,51 @@ The trained reward model supplies scalar feedback to PPO and is also used for th
 
 PPO performs online policy optimization using generated summaries and reward-model feedback. The experiment keeps the following model components available:
 
-- **Trainable policy \(\pi_\theta\):** Generates summaries and is updated by PPO.
-- **Critic \(V_\psi\):** Estimates state values for advantage calculation.
-- **Frozen reference policy \(\pi_{\mathrm{ref}}\):** The SFT policy, used to penalize excessive policy drift.
-- **Frozen reward model \(r_\phi\):** Scores completed summaries.
+- **Trainable policy $\pi_\theta$:** Generates summaries and is updated by PPO.
+- **Critic $V_\psi$:** Estimates state values for advantage calculation.
+- **Frozen reference policy $\pi_{\mathrm{ref}}$:** The SFT policy, used to penalize excessive policy drift.
+- **Frozen reward model $r_\phi$:** Scores completed summaries.
 
 #### 3.3.1 Token-Level KL-Penalized Reward
 
-For generated token \(a_t\) at state \(s_t\), the per-token reward is defined as:
+For generated token $a_t$ at state $s_t$, the per-token reward is defined as:
 
-\[
+$$
 r_t=-\beta_{\mathrm{KL}}
 \left[
 \log\pi_\theta(a_t\mid s_t)
 -\log\pi_{\mathrm{ref}}(a_t\mid s_t)
 \right]
 +\mathbf{1}[t=T]r_\phi(x,y).
-\]
+$$
 
-The KL-related term penalizes divergence from the reference policy, while the terminal reward-model score is added at the final generated token. With discount factor \(\gamma=1\), returns are accumulated without discounting:
+The KL-related term penalizes divergence from the reference policy, while the terminal reward-model score is added at the final generated token. With discount factor $\gamma=1$, returns are accumulated without discounting:
 
-\[
+$$
 R_t=\sum_{k\geq 0}r_{t+k}.
-\]
+$$
 
 Advantages are computed using the old critic estimate and normalized over valid generated-token positions:
 
-\[
+$$
 A_t=R_t-V_{\psi}^{\mathrm{old}}(s_t),
 \qquad
 \widehat A_t=\frac{A_t-\mu_A}{\sigma_A}.
-\]
+$$
 
 #### 3.3.2 Clipped PPO Objective
 
 The policy probability ratio is:
 
-\[
+$$
 \rho_t(\theta)=
 \frac{\pi_\theta(a_t\mid s_t)}
 {\pi_{\theta_{\mathrm{old}}}(a_t\mid s_t)}.
-\]
+$$
 
 The clipped surrogate objective is:
 
-\[
+$$
 L_{\mathrm{PPO}}(\theta)=\widehat{\mathbb E}_t
 \left[
 \min\left(
@@ -194,16 +194,16 @@ L_{\mathrm{PPO}}(\theta)=\widehat{\mathbb E}_t
 \operatorname{clip}(\rho_t(\theta),1-\epsilon,1+\epsilon)\widehat A_t
 \right)
 \right].
-\]
+$$
 
 The combined optimization objective includes the policy loss, value-function loss, and entropy bonus:
 
-\[
+$$
 \mathcal L(\theta,\psi)=
 -L_{\mathrm{PPO}}(\theta)
 +c_V\widehat{\mathbb E}_t[(V_\psi(s_t)-R_t)^2]
 -c_H\widehat{\mathbb E}_t[\mathcal H(\pi_\theta(\cdot\mid s_t))].
-\]
+$$
 
 The supplied configuration uses four optimization epochs per rollout. The clipping term limits the size of policy updates, while the value and entropy terms support critic learning and policy exploration.
 
@@ -211,18 +211,18 @@ The supplied configuration uses four optimization epochs per rollout. The clippi
 
 DPO trains a policy directly from preferred and rejected completions, using the SFT checkpoint as the reference policy. It avoids running an online RL loop and does not require an explicit reward model during policy training.
 
-For a preference pair \((x,y_w,y_l)\), the DPO objective is:
+For a preference pair $(x,y_w,y_l)$, the DPO objective is:
 
-\[
+$$
 \mathcal{L}_{\mathrm{DPO}}(\theta;\pi_{\mathrm{ref}})
 =-\mathbb E_{(x,y_w,y_l)}\left[
 \log\sigma\left(
 \beta\log\frac{\pi_\theta(y_w\mid x)}{\pi_{\mathrm{ref}}(y_w\mid x)}
 -\beta\log\frac{\pi_\theta(y_l\mid x)}{\pi_{\mathrm{ref}}(y_l\mid x)}
 \right)\right].
-\]
+$$
 
-Here, \(\beta=0.1\) controls the strength of the reference-policy constraint. Sequence log-probabilities are obtained by summing token log-probabilities over valid completion positions; prompt and padding positions are excluded. The supplied implementation description notes vectorized log-probability calculations using log-sum-exp operations.
+Here, $\beta=0.1$ controls the strength of the reference-policy constraint. Sequence log-probabilities are obtained by summing token log-probabilities over valid completion positions; prompt and padding positions are excluded. The supplied implementation description notes vectorized log-probability calculations using log-sum-exp operations.
 
 ## 4. Training Configuration and Runtime
 
@@ -232,12 +232,12 @@ Here, \(\beta=0.1\) controls the strength of the reference-policy constraint. Se
 |---|---:|---:|---:|---:|
 | Initialization | SmolLM2-135M | SFT checkpoint | SFT checkpoint | SFT checkpoint |
 | Optimizer | AdamW | AdamW | AdamW | AdamW |
-| Learning rate | \(5\times10^{-5}\) | \(5\times10^{-5}\) | \(1\times10^{-5}\) | \(2\times10^{-6}\) |
+| Learning rate | $5\times10^{-5}$ | $5\times10^{-5}$ | $1\times10^{-5}$ | $2\times10^{-6}$ |
 | Batch size | 8 | 8 | 16 (rollout) | 8 |
 | Training schedule | 1 epoch; 2,500 steps | 1 epoch; 2,500 steps | 200 iterations; 3,200 prompts | 1 epoch; 2,500 steps |
 | Precision | FP32 master / BF16 AMP | FP32 master / BF16 AMP | FP32 master / BF16 AMP | FP32 master / BF16 AMP |
 | Gradient clipping | 1.0 | 1.0 | 1.0 | 1.0 |
-| Additional settings | — | — | \(\epsilon=0.2\), \(c_V=0.1\), \(c_H=0.01\), \(\beta_{KL}=0.05\) | \(\beta=0.1\) |
+| Additional settings | — | — | $\epsilon=0.2$, $c_V=0.1$, $c_H=0.01$, $\beta_{KL}=0.05$ | $\beta=0.1$ |
 | Wall-clock time | 1,124.6 s | 1,032.6 s | 662.5 s | 1,811.7 s |
 
 > **Configuration check:** The reported dataset sizes, batch sizes, steps, and epoch counts should be checked against the actual dataloader settings. For example, 20,000 examples with batch size 8 do not automatically imply 2,500 optimizer steps if `drop_last`, gradient accumulation, distributed execution, or filtering changes the number of batches. Record the effective number of optimizer updates in the final experiment logs.
@@ -260,7 +260,7 @@ These are the execution times supplied for the experiment. They may not include 
 
 The following table reports the supplied measurements on the 300 held-out posts.
 
-| Model | ROUGE-1 | ROUGE-2 | ROUGE-L | Mean length (tokens) | Mean reward \(r_\phi\) |
+| Model | ROUGE-1 | ROUGE-2 | ROUGE-L | Mean length (tokens) | Mean reward $r_\phi$ |
 |---|---:|---:|---:|---:|---:|
 | Base SmolLM2-135M | 18.68 | 4.77 | 15.47 | 48.0 | -1.396 |
 | **SFT** | **32.04** | **11.93** | **25.42** | **30.4** | +0.352 |
@@ -289,9 +289,9 @@ These figures are **reward-model win rates**, not independently collected human 
 
 The supplied validation accuracy on 1,000 held-out preference pairs is **63.60%**. For misclassified examples where
 
-\[
+$$
 \Delta r=r_\phi(x,y_w)-r_\phi(x,y_l)<0,
-\]
+$$
 
 the report describes several recurring patterns.
 

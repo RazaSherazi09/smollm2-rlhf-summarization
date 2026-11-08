@@ -110,17 +110,17 @@ The base model is fine-tuned on Reddit post–summary examples using causal lang
 
 ### 2. Bradley–Terry Reward Modeling
 
-The reward model is initialized from the SFT transformer and extended with a scalar reward head. Given a prompt \(x\), a preferred response \(y_w\), and a rejected response \(y_l\), the model is trained to assign a higher score to the preferred response:
+The reward model is initialized from the SFT transformer and extended with a scalar reward head. Given a prompt $x$, a preferred response $y_w$, and a rejected response $y_l$, the model is trained to assign a higher score to the preferred response:
 
-\[
+$$
 \mathcal{L}_{RM}
 =
 -\mathbb{E}\left[
 \log \sigma\left(r_\phi(x,y_w)-r_\phi(x,y_l)\right)
 \right].
-\]
+$$
 
-Here, \(r_\phi\) is the learned scalar reward function and \(\sigma\) is the sigmoid function.
+Here, $r_\phi$ is the learned scalar reward function and $\sigma$ is the sigmoid function.
 
 ### 3. Proximal Policy Optimization (PPO)
 
@@ -130,16 +130,16 @@ Reported PPO coefficients:
 
 | Parameter | Value |
 |---|---:|
-| Clip range \(\epsilon\) | 0.2 |
-| Value coefficient \(c_V\) | 0.1 |
-| Entropy coefficient \(c_H\) | 0.01 |
-| KL coefficient \(\beta_{KL}\) | 0.05 |
+| Clip range $\epsilon$ | 0.2 |
+| Value coefficient $c_V$ | 0.1 |
+| Entropy coefficient $c_H$ | 0.01 |
+| KL coefficient $\beta_{KL}$ | 0.05 |
 
 ### 4. Direct Preference Optimization (DPO)
 
 DPO optimizes the policy directly from chosen/rejected response pairs relative to the SFT reference policy. Unlike the PPO path, DPO does not require a separately trained reward model or value network during its optimization objective.
 
-The reported DPO temperature parameter is \(\beta=0.1\).
+The reported DPO temperature parameter is $\beta=0.1$.
 
 ## Results
 
@@ -172,7 +172,7 @@ The tables below reproduce the project-reported values. These values should be c
 
 Reported evaluation used 300 held-out posts and deterministic greedy decoding with `max_new_tokens=48`, `temperature=0.0`, and stopping at `<|endoftext|>`.
 
-| Model | ROUGE-1 | ROUGE-2 | ROUGE-L | Mean tokens | KL to SFT | Mean reward \(r_\phi\) |
+| Model | ROUGE-1 | ROUGE-2 | ROUGE-L | Mean tokens | KL to SFT | Mean reward $r_\phi$ |
 |---|---:|---:|---:|---:|---:|---:|
 | Base SmolLM2-135M | 18.68 | 4.77 | 15.47 | 48.0 | N/A | -1.396 |
 | SFT | 32.04 | 11.93 | 25.42 | 30.4 | 0.00 | +0.352 |
@@ -220,7 +220,7 @@ The following six invariants are reported as checked in the project notes. These
 | 2 | Frozen models: reference policy and reward-model parameters remain frozen during the relevant PPO/DPO stages. | `requires_grad=False` reported; tensor counts 272 and 273 for the PPO reference and reward model. |
 | 3 | PPO initial KL: identical initial policy/reference weights produce approximately zero sampled-action divergence. | Initial mean KL reported as 0.000000 nats. |
 | 4 | PPO first optimization epoch: before the first optimizer update, policy ratios are approximately 1 and clip fraction is 0. | Ratio reported in `[0.999999, 1.000001]`; clip fraction 0.00%. |
-| 5 | DPO initial loss: when policy and reference are identical, the preference margin is zero and the loss is \(\ln 2 \approx 0.693147\). | Initial loss reported as 0.693147. |
+| 5 | DPO initial loss: when policy and reference are identical, the preference margin is zero and the loss is $\ln 2 \approx 0.693147$. | Initial loss reported as 0.693147. |
 | 6 | Reward pooling: pool from the final valid token using `attention_mask`, including left-padded batches. | Attention-mask-based indexing reported. |
 
 Recommended evidence: add runnable tests (for example, `tests/test_correctness.py`) that exercise actual batches and model parameters. Capture the real test command and unedited output; do not replace runtime checks with hard-coded expected values.
