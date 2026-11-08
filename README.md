@@ -225,6 +225,8 @@ Recommended evidence: add runnable tests (for example, `tests/test_correctness.p
 
 A Streamlit interface is included at `app/app.py` for comparing SFT, PPO, and DPO generations and displaying corresponding reward-model scores, if the app and required checkpoints are present in the repository.
 
+**Live demo:** [smollm2-rlhf-summarization-sherazi.streamlit.app](https://smollm2-rlhf-summarization-sherazi.streamlit.app/)
+
 ### Run locally
 
 ```bash
@@ -336,7 +338,7 @@ snapshot_download(
 
 ## Checkpoints and Deliverables
 
-- Trained checkpoints: [Hugging Face — smollm2-135m-rlhf-checkpoints](https://huggingface.co/razaasherazi/smollm2-135m-rlhf-checkpoints?utm_source=chatgpt.com)
+- Trained checkpoints: [razaasherazi/smollm2-135m-rlhf-checkpoints](https://huggingface.co/razaasherazi/smollm2-135m-rlhf-checkpoints)
 - Base model: [HuggingFaceTB/SmolLM2-135M](https://huggingface.co/HuggingFaceTB/SmolLM2-135M?utm_source=chatgpt.com)
 - Source code: [GitHub repository](https://github.com/Razaasherazi09/smollm2-rlhf-summarization?utm_source=chatgpt.com)
 - Academic report: `REPORT.md`
