@@ -1,3 +1,6 @@
+
+## for A10G Nvidia GPU
+
 import os
 import modal
 
@@ -21,30 +24,30 @@ image = (
     .add_local_python_source("starter")
     .add_local_file("common.py", "/root/common.py")
     .add_local_file("train_sft.py", "/root/train_sft.py")
+    .add_local_file("train_reward.py", "/root/train_reward.py")
 )
 
 @app.function(
     image=image,
-    gpu="L4",
+    gpu="A10G",
     volumes={"/vol": volume},
     timeout=2400,
 )
-def run_stage1_sft():
-    from train_sft import train_sft
+def run_stage2_reward():
+    from train_reward import train_reward
 
-    print("Launching Stage 1 SFT on Modal L4 GPU...")
-    metrics = train_sft()
+    print("Launching Stage 2: Reward Model on Modal A10G GPU...")
+    metrics = train_reward()
 
-    # Commit saved checkpoint, plots, and json results to persistent volume
     volume.commit()
-    print("SFT artifacts, checkpoints, and figures committed to /vol.")
+    print("Reward Model checkpoint, plots, and metrics committed to /vol.")
     return metrics
 
 @app.local_entrypoint()
 def main():
-    metrics = run_stage1_sft.remote()
-    print("\n--- SFT Training Finished Successfully ---")
-    print(f"Final Train Loss: {metrics['final_train_loss']:.4f}")
-    print(f"Final Val Loss:   {metrics['final_val_loss']:.4f}")
-    print(f"Duration:         {metrics['total_time_seconds']}s")
-    print(f"GPU:              {metrics['gpu']}")
+    metrics = run_stage2_reward.remote()
+    print("\n--- Reward Model Training Finished Successfully ---")
+    print(f"Final Train Loss:       {metrics['final_train_loss']:.4f}")
+    print(f"Pairwise Accuracy:      {metrics['final_pairwise_accuracy'] * 100:.2f}%")
+    print(f"Duration:               {metrics['total_time_seconds']}s")
+    print(f"GPU:                    {metrics['gpu']}")
