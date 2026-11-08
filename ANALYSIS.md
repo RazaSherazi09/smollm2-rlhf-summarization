@@ -191,7 +191,7 @@ L_{\mathrm{PPO}}(\theta)=\widehat{\mathbb E}_t
 \left[
 \min\left(
 \rho_t(\theta)\widehat A_t,
-\operatorname{clip}(\rho_t(\theta),1-\epsilon,1+\epsilon)\widehat A_t
+\mathrm{clip}\!\left(\rho_t(\theta),\,1-\epsilon,\,1+\epsilon\right)\widehat A_t
 \right)
 \right].
 $$

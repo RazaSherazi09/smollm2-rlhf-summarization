@@ -113,11 +113,7 @@ The base model is fine-tuned on Reddit post–summary examples using causal lang
 The reward model is initialized from the SFT transformer and extended with a scalar reward head. Given a prompt $x$, a preferred response $y_w$, and a rejected response $y_l$, the model is trained to assign a higher score to the preferred response:
 
 $$
-\mathcal{L}_{RM}
-=
--\mathbb{E}\left[
-\log \sigma\left(r_\phi(x,y_w)-r_\phi(x,y_l)\right)
-\right].
+\mathcal{L}_{\mathrm{RM}} = -\mathbb{E}\left[\log \sigma\left(r_\phi(x, y_w) - r_\phi(x, y_l)\right)\right].
 $$
 
 Here, $r_\phi$ is the learned scalar reward function and $\sigma$ is the sigmoid function.
