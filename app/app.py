@@ -1,16 +1,16 @@
 import os
-import html
 import gc
-
-import streamlit as st
+import html
 import torch
 import torch.nn as nn
+import streamlit as st
+
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from huggingface_hub import snapshot_download
 
 
 # ============================================================
-# PAGE CONFIG
+# CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -27,9 +27,13 @@ MAX_INPUT_LENGTH = 448
 MAX_NEW_TOKENS = 48
 MAX_REWARD_LENGTH = 512
 
+# Streamlit Community Cloud is CPU-only for this deployment.
+DEVICE = "cpu"
+MODEL_DTYPE = torch.float32
+
 
 # ============================================================
-# DESIGN SYSTEM — CREAM / INK / PINK
+# EDITORIAL / BRUTALIST UI
 # ============================================================
 
 st.markdown(
@@ -38,332 +42,76 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
     :root {
-        --paper: #f5f1e7;
-        --ink: #17151d;
-        --pink: #f45d91;
-        --yellow: #ffd83d;
-        --blue: #a8d9f5;
-        --green: #a9e878;
-        --muted: #716d68;
-        --line: #242129;
-        --white: #fffdf8;
+        --paper:#f5f1e7; --ink:#17151d; --pink:#f45d91;
+        --yellow:#ffd83d; --blue:#a8d9f5; --green:#a9e878;
+        --muted:#716d68; --white:#fffdf8;
     }
+    .stApp { background:var(--paper); color:var(--ink); font-family:'DM Sans',sans-serif; }
+    [data-testid="stHeader"] { background:transparent; }
+    [data-testid="stMainBlockContainer"] { max-width:1320px; padding:1.3rem 2.4rem 4rem; }
+    #MainMenu, footer { visibility:hidden; }
+    h1,h2,h3,p,label,span,div { font-family:'DM Sans',sans-serif; }
 
-    .stApp {
-        background: var(--paper);
-        color: var(--ink);
-        font-family: 'DM Sans', sans-serif;
-    }
-
-    [data-testid="stHeader"] { background: transparent; }
-    [data-testid="stMainBlockContainer"] {
-        max-width: 1320px;
-        padding: 1.3rem 2.4rem 4rem;
-    }
-
-    #MainMenu, footer { visibility: hidden; }
-
-    h1, h2, h3, p, label, span, div {
-        font-family: 'DM Sans', sans-serif;
-    }
-
-    /* Brand bar */
-    .brandbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 4px 0 26px;
-        border-bottom: 2px solid var(--ink);
-        margin-bottom: 40px;
-    }
+    .brandbar { display:flex; align-items:center; justify-content:space-between; padding:4px 0 26px; border-bottom:2px solid var(--ink); margin-bottom:40px; }
     .brand-left { display:flex; align-items:center; gap:10px; }
-    .brand-mark {
-        width: 30px; height: 30px;
-        display:flex; align-items:center; justify-content:center;
-        background: var(--pink);
-        border: 2px solid var(--ink);
-        box-shadow: 3px 3px 0 var(--ink);
-        font-family:'Space Grotesk',sans-serif;
-        font-size:17px; font-weight:900;
-    }
-    .brand-name {
-        font-family:'DM Mono',monospace;
-        font-size:11px; font-weight:500;
-        letter-spacing:1.3px;
-    }
-    .online-pill {
-        border: 2px solid var(--ink);
-        background: var(--green);
-        box-shadow: 3px 3px 0 var(--ink);
-        padding: 7px 12px;
-        font-family:'DM Mono',monospace;
-        font-size:9px; font-weight:500;
-        letter-spacing:1px;
-        text-transform:uppercase;
-    }
-    .online-dot {
-        display:inline-block; width:7px; height:7px;
-        background:#277b43; border-radius:50%; margin-right:7px;
-    }
+    .brand-mark { width:30px; height:30px; display:flex; align-items:center; justify-content:center; background:var(--pink); border:2px solid var(--ink); box-shadow:3px 3px 0 var(--ink); font-family:'Space Grotesk',sans-serif; font-size:17px; font-weight:900; }
+    .brand-name { font-family:'DM Mono',monospace; font-size:11px; letter-spacing:1.3px; }
+    .online-pill { border:2px solid var(--ink); background:var(--green); box-shadow:3px 3px 0 var(--ink); padding:7px 12px; font-family:'DM Mono',monospace; font-size:9px; letter-spacing:1px; text-transform:uppercase; }
+    .online-dot { display:inline-block; width:7px; height:7px; background:#277b43; border-radius:50%; margin-right:7px; }
 
-    /* Hero */
-    .hero-kicker, .eyebrow {
-        font-family:'DM Mono',monospace;
-        font-size:10px; letter-spacing:1.5px;
-        text-transform:uppercase; font-weight:500;
-    }
-    .hero-title {
-        font-family:'Space Grotesk',sans-serif;
-        font-size:clamp(3.6rem,7.4vw,6.6rem);
-        font-weight:700; line-height:.86;
-        letter-spacing:-.075em;
-        text-transform:uppercase;
-        color:var(--ink);
-        margin:22px 0 24px;
-    }
-    .hero-title .pink { color:var(--pink); }
-    .hero-copy {
-        max-width:440px; color:#48444a;
-        font-size:15px; line-height:1.65;
-    }
-    .hero-art {
-        position:relative; min-height:300px;
-        display:flex; align-items:center; justify-content:center;
-        padding:25px;
-    }
-    .code-window {
-        width:100%; max-width:470px;
-        background:var(--ink); color:#f8f3e9;
-        border:2px solid var(--ink);
-        box-shadow:10px 10px 0 #9275ef;
-        transform:rotate(-2deg);
-    }
-    .code-top {
-        padding:12px 16px; border-bottom:1px solid #494550;
-        color:#c4bacd; font-family:'DM Mono',monospace;
-        font-size:10px;
-    }
-    .code-body {
-        padding:25px 22px 27px;
-        font-family:'DM Mono',monospace;
-        font-size:clamp(12px,1.4vw,16px);
-        line-height:2;
-    }
-    .code-purple { color:#9c88ff; }
-    .code-pink { color:#ff6f9e; }
-    .code-green { color:#a9e878; }
-    .code-yellow { color:#ffd83d; }
-    .sticker {
-        position:absolute; z-index:2;
-        width:82px; height:82px; border-radius:50%;
-        display:flex; align-items:center; justify-content:center;
-        text-align:center; transform:rotate(-12deg);
-        background:var(--yellow); border:2px solid var(--ink);
-        box-shadow:4px 4px 0 var(--ink);
-        font-family:'DM Mono',monospace;
-        font-size:10px; line-height:1.25; font-weight:500;
-        top:8px; left:2%;
-    }
-    .mini-note {
-        position:absolute; right:2%; bottom:0;
-        padding:12px 10px; background:var(--blue);
-        border:2px solid var(--ink); box-shadow:4px 4px 0 var(--ink);
-        transform:rotate(7deg); font-family:'DM Mono',monospace;
-        font-size:10px; line-height:1.35;
-    }
+    .hero-kicker,.eyebrow { font-family:'DM Mono',monospace; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; }
+    .hero-title { font-family:'Space Grotesk',sans-serif; font-size:clamp(3.6rem,7.4vw,6.6rem); font-weight:700; line-height:.86; letter-spacing:-.075em; text-transform:uppercase; color:var(--ink); margin:22px 0 24px; }
+    .hero-title .pink,.studio-title .pink { color:var(--pink); }
+    .hero-copy { max-width:440px; color:#48444a; font-size:15px; line-height:1.65; }
+    .hero-art { position:relative; min-height:300px; display:flex; align-items:center; justify-content:center; padding:25px; }
+    .code-window { width:100%; max-width:470px; background:var(--ink); color:#f8f3e9; border:2px solid var(--ink); box-shadow:10px 10px 0 #9275ef; transform:rotate(-2deg); }
+    .code-top { padding:12px 16px; border-bottom:1px solid #494550; color:#c4bacd; font-family:'DM Mono',monospace; font-size:10px; }
+    .code-body { padding:25px 22px 27px; font-family:'DM Mono',monospace; font-size:clamp(12px,1.4vw,16px); line-height:2; }
+    .code-purple { color:#9c88ff; } .code-pink { color:#ff6f9e; } .code-green { color:#a9e878; } .code-yellow { color:#ffd83d; }
+    .sticker { position:absolute; z-index:2; width:82px; height:82px; border-radius:50%; display:flex; align-items:center; justify-content:center; text-align:center; transform:rotate(-12deg); background:var(--yellow); border:2px solid var(--ink); box-shadow:4px 4px 0 var(--ink); font-family:'DM Mono',monospace; font-size:10px; line-height:1.25; top:8px; left:2%; }
+    .mini-note { position:absolute; right:2%; bottom:0; padding:12px 10px; background:var(--blue); border:2px solid var(--ink); box-shadow:4px 4px 0 var(--ink); transform:rotate(7deg); font-family:'DM Mono',monospace; font-size:10px; line-height:1.35; }
 
-    /* Feature strip */
-    .feature-strip {
-        display:grid; grid-template-columns:repeat(3,1fr);
-        border-top:2px solid var(--ink);
-        border-bottom:2px solid var(--ink);
-        margin:38px 0 58px;
-    }
-    .feature {
-        display:flex; align-items:center; gap:14px;
-        min-height:64px; padding:12px 15px;
-        border-right:2px solid var(--ink);
-        font-family:'DM Mono',monospace;
-        font-size:11px; line-height:1.4;
-    }
-    .feature:last-child { border-right:0; }
-    .feature-num { color:var(--pink); font-size:16px; font-weight:700; }
+    .feature-strip { display:grid; grid-template-columns:repeat(3,1fr); border-top:2px solid var(--ink); border-bottom:2px solid var(--ink); margin:38px 0 58px; }
+    .feature { display:flex; align-items:center; gap:14px; min-height:64px; padding:12px 15px; border-right:2px solid var(--ink); font-family:'DM Mono',monospace; font-size:11px; line-height:1.4; }
+    .feature:last-child { border-right:0; } .feature-num { color:var(--pink); font-size:16px; font-weight:700; }
 
-    /* Studio section */
-    .studio-grid {
-        display:grid; grid-template-columns:.85fr 1.15fr;
-        gap:7%; align-items:start;
-        margin:0 0 60px;
-    }
-    .studio-title {
-        font-family:'Space Grotesk',sans-serif;
-        font-size:clamp(2.7rem,5vw,4.6rem);
-        line-height:.9; letter-spacing:-.07em;
-        font-weight:700; text-transform:uppercase;
-        margin:18px 0 20px;
-    }
-    .studio-title .pink { color:var(--pink); }
-    .studio-description {
-        max-width:350px; color:#5e5955;
-        font-size:14px; line-height:1.7;
-    }
-    .tip {
-        margin-top:28px; display:flex; gap:10px;
-        align-items:flex-start; max-width:340px;
-        font-family:'DM Mono',monospace;
-        font-size:10px; line-height:1.6;
-        color:#55504d;
-    }
-    .tip-mark {
-        flex:0 0 20px; width:20px; height:20px;
-        display:flex; align-items:center; justify-content:center;
-        border:1.5px solid var(--ink); border-radius:50%;
-        background:var(--yellow); font-weight:700;
-    }
+    .studio-grid { display:grid; grid-template-columns:.85fr 1.15fr; gap:7%; align-items:start; margin:0 0 24px; }
+    .studio-title { font-family:'Space Grotesk',sans-serif; font-size:clamp(2.7rem,5vw,4.6rem); line-height:.9; letter-spacing:-.07em; font-weight:700; text-transform:uppercase; margin:18px 0 20px; }
+    .studio-description { max-width:350px; color:#5e5955; font-size:14px; line-height:1.7; }
+    .tip { margin-top:28px; display:flex; gap:10px; align-items:flex-start; max-width:340px; font-family:'DM Mono',monospace; font-size:10px; line-height:1.6; color:#55504d; }
+    .tip-mark { flex:0 0 20px; width:20px; height:20px; display:flex; align-items:center; justify-content:center; border:1.5px solid var(--ink); border-radius:50%; background:var(--yellow); font-weight:700; }
 
-    /* Form panel */
-    .form-panel-top {
-        display:flex; justify-content:space-between;
-        padding-bottom:14px; margin-bottom:16px;
-        border-bottom:1.5px solid var(--ink);
-        font-family:'DM Mono',monospace;
-        font-size:10px; letter-spacing:1px;
-    }
+    [data-testid="stVerticalBlockBorderWrapper"] { background:var(--white); border:2px solid var(--ink); border-radius:0; box-shadow:5px 5px 0 var(--ink); }
+    .form-panel-top { display:flex; justify-content:space-between; padding-bottom:14px; margin-bottom:16px; border-bottom:1.5px solid var(--ink); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:1px; }
     .required { color:#b94d72; }
-    .stTextArea label, .stTextInput label {
-        color:var(--ink)!important;
-        font-size:12px!important; font-weight:700!important;
-    }
-    .stTextArea textarea, .stTextInput input {
-        background:var(--paper)!important;
-        color:var(--ink)!important;
-        border:1.5px solid var(--ink)!important;
-        border-radius:0!important;
-        font-size:13px!important;
-        box-shadow:none!important;
-    }
-    .stTextArea textarea:focus, .stTextInput input:focus {
-        border:2px solid var(--pink)!important;
-        box-shadow:3px 3px 0 var(--pink)!important;
-    }
-    .stButton > button {
-        background:var(--pink)!important;
-        color:var(--ink)!important;
-        border:2px solid var(--ink)!important;
-        border-radius:0!important;
-        box-shadow:4px 4px 0 var(--ink)!important;
-        font-family:'DM Sans',sans-serif!important;
-        font-weight:900!important;
-        letter-spacing:.5px;
-        min-height:48px;
-        transition:transform .15s ease, box-shadow .15s ease;
-    }
-    .stButton > button:hover {
-        transform:translate(2px,2px);
-        box-shadow:2px 2px 0 var(--ink)!important;
-        color:var(--ink)!important;
-    }
+    .stTextArea label,.stTextInput label { color:var(--ink)!important; font-size:12px!important; font-weight:700!important; }
+    .stTextArea textarea,.stTextInput input { background:var(--paper)!important; color:var(--ink)!important; border:1.5px solid var(--ink)!important; border-radius:0!important; font-size:13px!important; box-shadow:none!important; }
+    .stTextArea textarea:focus,.stTextInput input:focus { border:2px solid var(--pink)!important; box-shadow:3px 3px 0 var(--pink)!important; }
+    .stButton > button { background:var(--pink)!important; color:var(--ink)!important; border:2px solid var(--ink)!important; border-radius:0!important; box-shadow:4px 4px 0 var(--ink)!important; font-family:'DM Sans',sans-serif!important; font-weight:900!important; letter-spacing:.5px; min-height:48px; }
+    .stButton > button:hover { transform:translate(2px,2px); box-shadow:2px 2px 0 var(--ink)!important; color:var(--ink)!important; }
+    .stProgress > div > div > div > div { background:var(--pink); }
 
-    /* Results */
-    .results-heading {
-        display:flex; justify-content:space-between;
-        align-items:end; gap:20px;
-        border-bottom:2px solid var(--ink);
-        padding-bottom:14px; margin:20px 0 22px;
-    }
-    .results-title {
-        font-family:'Space Grotesk',sans-serif;
-        font-size:clamp(2rem,4vw,3.4rem);
-        font-weight:700; letter-spacing:-.06em;
-        text-transform:uppercase; line-height:1;
-    }
-    .results-tag {
-        font-family:'DM Mono',monospace;
-        font-size:10px; padding:7px 9px;
-        border:1.5px solid var(--ink);
-        background:var(--blue); white-space:nowrap;
-    }
-    .result-card {
-        background:var(--white);
-        border:2px solid var(--ink);
-        box-shadow:5px 5px 0 var(--ink);
-        padding:19px;
-        min-height:300px;
-        margin-bottom:8px;
-    }
-    .result-top {
-        display:flex; justify-content:space-between;
-        align-items:center; gap:8px;
-        border-bottom:1.5px solid var(--ink);
-        padding-bottom:13px; margin-bottom:15px;
-    }
-    .result-model {
-        font-family:'Space Grotesk',sans-serif;
-        font-size:23px; font-weight:700;
-        letter-spacing:-1px;
-    }
-    .result-stage {
-        font-family:'DM Mono',monospace;
-        font-size:9px; padding:5px 7px;
-        border:1px solid var(--ink); background:var(--yellow);
-    }
-    .result-method {
-        font-family:'DM Mono',monospace;
-        font-size:9px; color:#77716c;
-        text-transform:uppercase; letter-spacing:.5px;
-        margin-bottom:12px;
-    }
-    .result-summary {
-        color:#343039; font-size:13px;
-        line-height:1.7; min-height:115px;
-        overflow-wrap:anywhere;
-    }
-    .result-scoreline {
-        border-top:1.5px solid var(--ink);
-        margin-top:17px; padding-top:13px;
-        display:flex; justify-content:space-between;
-        align-items:end;
-    }
-    .result-score-label {
-        font-family:'DM Mono',monospace;
-        font-size:9px; color:#77716c;
-        text-transform:uppercase;
-    }
-    .result-score {
-        font-family:'Space Grotesk',sans-serif;
-        font-size:26px; font-weight:700;
-        letter-spacing:-1px;
-    }
-    .result-delta {
-        font-family:'DM Mono',monospace;
-        font-size:10px; margin-top:5px;
-    }
-    .delta-positive { color:#26774d; }
-    .delta-negative { color:#b53d5c; }
-    .empty-result {
-        background:#fffdf8; border:2px dashed #8c857d;
-        padding:30px; text-align:center;
-        font-family:'DM Mono',monospace;
-        color:#77716c; font-size:11px; line-height:1.8;
-    }
-    .score-note {
-        background:#fff3c2; border:1.5px solid var(--ink);
-        padding:12px 15px; margin-top:20px;
-        font-size:11px; line-height:1.6; color:#514a3c;
-    }
-    .footer {
-        margin-top:70px; padding-top:16px;
-        border-top:2px solid var(--ink);
-        display:flex; justify-content:space-between;
-        gap:15px; color:#716d68;
-        font-family:'DM Mono',monospace;
-        font-size:9px; line-height:1.6;
-        letter-spacing:.4px;
-    }
+    .results-heading { display:flex; justify-content:space-between; align-items:end; gap:20px; border-bottom:2px solid var(--ink); padding-bottom:14px; margin:42px 0 22px; }
+    .results-title { font-family:'Space Grotesk',sans-serif; font-size:clamp(2rem,4vw,3.4rem); font-weight:700; letter-spacing:-.06em; text-transform:uppercase; line-height:1; }
+    .results-tag { font-family:'DM Mono',monospace; font-size:10px; padding:7px 9px; border:1.5px solid var(--ink); background:var(--blue); white-space:nowrap; }
+    .result-card { background:var(--white); border:2px solid var(--ink); box-shadow:5px 5px 0 var(--ink); padding:19px; min-height:300px; margin-bottom:8px; }
+    .result-top { display:flex; justify-content:space-between; align-items:center; gap:8px; border-bottom:1.5px solid var(--ink); padding-bottom:13px; margin-bottom:15px; }
+    .result-model { font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:700; letter-spacing:-1px; }
+    .result-stage { font-family:'DM Mono',monospace; font-size:9px; padding:5px 7px; border:1px solid var(--ink); background:var(--yellow); }
+    .result-method { font-family:'DM Mono',monospace; font-size:9px; color:#77716c; text-transform:uppercase; margin-bottom:12px; }
+    .result-summary { color:#343039; font-size:13px; line-height:1.7; min-height:115px; overflow-wrap:anywhere; }
+    .result-scoreline { border-top:1.5px solid var(--ink); margin-top:17px; padding-top:13px; display:flex; justify-content:space-between; align-items:end; }
+    .result-score-label { font-family:'DM Mono',monospace; font-size:9px; color:#77716c; text-transform:uppercase; }
+    .result-score { font-family:'Space Grotesk',sans-serif; font-size:26px; font-weight:700; letter-spacing:-1px; }
+    .result-delta { font-family:'DM Mono',monospace; font-size:10px; margin-top:5px; }
+    .delta-positive { color:#26774d; } .delta-negative { color:#b53d5c; }
+    .empty-result { background:#fffdf8; border:2px dashed #8c857d; padding:30px; text-align:center; font-family:'DM Mono',monospace; color:#77716c; font-size:11px; line-height:1.8; }
+    .score-note { background:#fff3c2; border:1.5px solid var(--ink); padding:12px 15px; margin-top:20px; font-size:11px; line-height:1.6; color:#514a3c; }
+    .footer { margin-top:70px; padding-top:16px; border-top:2px solid var(--ink); display:flex; justify-content:space-between; gap:15px; color:#716d68; font-family:'DM Mono',monospace; font-size:9px; line-height:1.6; letter-spacing:.4px; }
 
     @media(max-width:850px) {
         [data-testid="stMainBlockContainer"] { padding:1rem 1.1rem 3rem; }
-        .studio-grid { grid-template-columns:1fr; gap:25px; }
+        .studio-grid { grid-template-columns:1fr; gap:20px; }
         .hero-art { min-height:250px; margin-top:15px; }
         .feature-strip { grid-template-columns:1fr; }
         .feature { border-right:0; border-bottom:1.5px solid var(--ink); }
@@ -377,11 +125,65 @@ st.markdown(
 
 
 # ============================================================
-# MODEL & INFERENCE HELPERS (MEMORY OPTIMIZED)
+# CHECKPOINTS AND MODEL LOADING
+# ============================================================
+
+def resolve_model_path(stage):
+    """Return a local checkpoint directory or download that stage."""
+    local_path = os.path.join("checkpoints", stage)
+    if os.path.isdir(local_path) and os.listdir(local_path):
+        return local_path
+
+    downloaded_dir = snapshot_download(
+        repo_id=HF_REPO_ID,
+        allow_patterns=f"{stage}/*",
+    )
+    stage_path = os.path.join(downloaded_dir, stage)
+
+    if not os.path.isdir(stage_path):
+        raise FileNotFoundError(
+            f"Checkpoint folder '{stage}' was not found in {HF_REPO_ID}."
+        )
+
+    return stage_path
+
+
+def load_causal_model(stage):
+    """Load only one generation model at a time."""
+    checkpoint_path = resolve_model_path(stage)
+
+    model = AutoModelForCausalLM.from_pretrained(
+        checkpoint_path,
+        dtype=MODEL_DTYPE,
+        low_cpu_mem_usage=True,
+    )
+
+    model.to(DEVICE)
+    model.eval()
+    return model
+
+
+@st.cache_resource(show_spinner=False)
+def load_tokenizer():
+    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    return tokenizer
+
+
+def release_model(model):
+    """Release model references and ask Python to reclaim memory."""
+    if model is not None:
+        del model
+    gc.collect()
+
+
+# ============================================================
+# REWARD MODEL
 # ============================================================
 
 class RewardModel(nn.Module):
-    """Reward model with a scalar value head over the SFT backbone."""
+    """SFT transformer backbone plus a scalar reward head."""
 
     def __init__(self, base_causal_lm):
         super().__init__()
@@ -397,319 +199,144 @@ class RewardModel(nn.Module):
             input_ids=input_ids,
             attention_mask=attention_mask,
         )
+
         last_indices = (attention_mask.sum(dim=1) - 1).clamp(min=0)
-        batch_idx = torch.arange(input_ids.shape[0], device=input_ids.device)
-        last_hidden = outputs.last_hidden_state[batch_idx, last_indices]
+        batch_indices = torch.arange(
+            input_ids.shape[0],
+            device=input_ids.device,
+        )
+
+        last_hidden = outputs.last_hidden_state[
+            batch_indices,
+            last_indices,
+        ]
+
         return self.v_head(last_hidden).squeeze(-1)
 
 
-def resolve_model_path(stage_subfolder):
-    """Locates local checkpoint or downloads from Hugging Face Hub."""
-    local_path = os.path.join("checkpoints", stage_subfolder)
-    if os.path.exists(local_path) and os.listdir(local_path):
-        return local_path
+def load_reward_model():
+    """
+    Load the reward model only after all three summaries have been generated.
+    Its backbone is independent of the SFT generation model.
+    """
+    sft_path = resolve_model_path("sft")
+    reward_path = resolve_model_path("reward")
 
-    downloaded_dir = snapshot_download(
-        repo_id=HF_REPO_ID,
-        allow_patterns=f"{stage_subfolder}/*",
-    )
-    resolved_path = os.path.join(downloaded_dir, stage_subfolder)
-    if not os.path.exists(resolved_path):
-        raise FileNotFoundError(f"Checkpoint directory not found: {resolved_path}")
-    return resolved_path
-
-
-@st.cache_resource(show_spinner=False)
-def get_tokenizer():
-    """Caches only the tokenizer (~5MB) to keep startup instant and memory tiny."""
-    tok = AutoTokenizer.from_pretrained(BASE_MODEL)
-    if tok.pad_token_id is None:
-        tok.pad_token = tok.eos_token
-    return tok
-
-
-def run_single_model_generation(stage_name, prompt_text, tokenizer, device):
-    """Loads one model, generates its summary, and frees RAM immediately."""
-    model_path = resolve_model_path(stage_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.float32,
+    backbone = AutoModelForCausalLM.from_pretrained(
+        sft_path,
+        dtype=MODEL_DTYPE,
         low_cpu_mem_usage=True,
-    ).to(device).eval()
+    )
 
+    reward_model = RewardModel(backbone)
+    reward_model.to(DEVICE)
+    reward_model.eval()
+
+    del backbone
+    gc.collect()
+
+    weights_file = os.path.join(reward_path, "reward_model.pt")
+    if not os.path.isfile(weights_file):
+        raise FileNotFoundError(
+            f"Reward checkpoint not found: {weights_file}"
+        )
+
+    # mmap avoids eagerly copying the entire checkpoint into RAM where
+    # supported by the installed PyTorch version.
+    try:
+        state_dict = torch.load(
+            weights_file,
+            map_location="cpu",
+            weights_only=True,
+            mmap=True,
+        )
+    except TypeError:
+        state_dict = torch.load(
+            weights_file,
+            map_location="cpu",
+            weights_only=True,
+        )
+
+    reward_model.load_state_dict(state_dict, strict=True)
+
+    del state_dict
+    gc.collect()
+
+    return reward_model
+
+
+# ============================================================
+# INFERENCE
+# ============================================================
+
+def generate_summary(model, tokenizer, prompt, max_new_tokens=MAX_NEW_TOKENS):
     inputs = tokenizer(
-        prompt_text,
+        prompt,
         return_tensors="pt",
         truncation=True,
         max_length=MAX_INPUT_LENGTH,
-    ).to(device)
+    )
 
-    prompt_len = inputs["input_ids"].shape[1]
-
-    with torch.no_grad():
+    with torch.inference_mode():
         output = model.generate(
             **inputs,
-            max_new_tokens=MAX_NEW_TOKENS,
+            max_new_tokens=max_new_tokens,
             do_sample=False,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
 
-    generated = output[0, prompt_len:]
-    text = tokenizer.decode(generated, skip_special_tokens=False)
+    prompt_length = inputs["input_ids"].shape[1]
+    generated_tokens = output[0, prompt_length:]
 
-    if "<|endoftext|>" in text:
-        text = text.split("<|endoftext|>")[0]
-
-    # Explicit memory cleanup
-    del model, inputs, output, generated
-    gc.collect()
-
+    text = tokenizer.decode(
+        generated_tokens,
+        skip_special_tokens=True,
+    )
     return text.strip()
 
 
-def score_summaries_with_reward_model(prompt_text, summary_list, tokenizer, device):
-    """Loads Reward Model, evaluates all three summaries, and frees RAM immediately."""
-    sft_path = resolve_model_path("sft")
-    reward_path = resolve_model_path("reward")
+def compute_reward_score(reward_model, tokenizer, prompt, summary):
+    full_text = prompt.strip() + " " + summary.strip() + "<|endoftext|>"
 
-    reward_backbone = AutoModelForCausalLM.from_pretrained(
-        sft_path,
-        torch_dtype=torch.float32,
-        low_cpu_mem_usage=True,
+    inputs = tokenizer(
+        full_text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=MAX_REWARD_LENGTH,
     )
-    reward_model = RewardModel(reward_backbone).to(device).eval()
 
-    weights_file = os.path.join(reward_path, "reward_model.pt")
-    if not os.path.exists(weights_file):
-        raise FileNotFoundError(f"Reward weights not found: {weights_file}")
+    with torch.inference_mode():
+        score = reward_model(
+            inputs["input_ids"],
+            inputs["attention_mask"],
+        ).item()
 
-    state = torch.load(weights_file, map_location=device, weights_only=True)
-    reward_model.load_state_dict(state, strict=True)
-
-    scores = []
-    for summary in summary_list:
-        full_text = prompt_text.strip() + " " + summary.strip() + "<|endoftext|>"
-        inputs = tokenizer(
-            full_text,
-            return_tensors="pt",
-            truncation=True,
-            max_length=MAX_REWARD_LENGTH,
-        ).to(device)
-
-        with torch.no_grad():
-            s = reward_model(inputs["input_ids"], inputs["attention_mask"]).item()
-        scores.append(round(s, 3))
-
-    # Explicit memory cleanup
-    del reward_model, reward_backbone, state
-    gc.collect()
-
-    return scores
+    return round(score, 3)
 
 
-# ============================================================
-# BRAND BAR + HERO
-# ============================================================
-
-st.markdown(
+def generate_with_one_model(stage, tokenizer, prompt, progress, start, end):
     """
-    <div class="brandbar">
-        <div class="brand-left">
-            <div class="brand-mark">S</div>
-            <div class="brand-name">SMOLLM2 / SUMMARY STUDIO</div>
-        </div>
-        <div class="online-pill">
-            <span class="online-dot"></span> MODEL INTERFACE
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-hero_left, hero_right = st.columns([1.05, 1], gap="large")
-
-with hero_left:
-    st.markdown(
-        """
-        <div class="hero-kicker">TEXT → SUMMARY / ALIGNMENT LAB</div>
-        <div class="hero-title">
-            Make your<br>
-            words<br>
-            <span class="pink">matter.</span>
-        </div>
-        <div class="hero-copy">
-            Explore how human-preference alignment changes the way a
-            language model summarizes Reddit discussions. Compare
-            supervised fine-tuning, PPO, and DPO — side by side.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with hero_right:
-    st.markdown(
-        """
-        <div class="hero-art">
-            <div class="sticker">LESS<br>NOISE.<br>MORE<br>MEANING.</div>
-            <div class="code-window">
-                <div class="code-top">alignment_pipeline.py &nbsp; / &nbsp; preview</div>
-                <div class="code-body">
-                    <span class="code-purple">INPUT</span> = <span class="code-green">reddit_post</span><br>
-                    <span class="code-purple">SFT</span> → <span class="code-pink">PPO</span> → <span class="code-yellow">DPO</span><br><br>
-                    <span class="code-purple">GENERATE</span>(post)<br>
-                    <span class="code-purple">SCORE</span>(summary, reward_model)<br>
-                    <span class="code-green">COMPARE</span>(all_outputs)
-                </div>
-            </div>
-            <div class="mini-note">01<br>GENERATE<br>02<br>COMPARE</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-st.markdown(
+    Load -> generate -> delete.
+    At no point are SFT, PPO and DPO generation models resident together.
     """
-    <div class="feature-strip">
-        <div class="feature"><span class="feature-num">01</span> Natural-language<br>Reddit input</div>
-        <div class="feature"><span class="feature-num">02</span> Three alignment<br>approaches</div>
-        <div class="feature"><span class="feature-num">03</span> Reward-scored<br>summaries</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# INITIALIZE TOKENIZER & DEVICE
-# ============================================================
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-tokenizer = get_tokenizer()
-
-
-# ============================================================
-# QUERY STUDIO
-# ============================================================
-
-st.markdown(
-    """
-    <div class="studio-grid">
-        <div>
-            <div class="eyebrow">QUERY STUDIO / 01</div>
-            <div class="studio-title">
-                What do<br>
-                you want<br>
-                <span class="pink">summarized?</span>
-            </div>
-            <div class="studio-description">
-                Paste a Reddit post. The models will generate their own
-                summaries, then the trained reward model will score each
-                result using its learned preference signal.
-            </div>
-            <div class="tip">
-                <span class="tip-mark">i</span>
-                <span>Tip: Include the full post and its relevant context.
-                The application appends the TL;DR prompt automatically.</span>
-            </div>
-        </div>
-        <div></div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-with st.container(border=True):
-    st.markdown(
-        """
-        <div class="form-panel-top">
-            <span>INPUT_01 / REDDIT POST</span>
-            <span class="required">REQUIRED</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    default_sample = (
-        "I have been working at my current software company for two years "
-        "as a junior developer. I recently received a job offer from another "
-        "firm that pays 25% more salary, but requires full in-office attendance "
-        "with a 45-minute commute each way. My current job is 100% remote, "
-        "and I value my flexibility and work-life balance greatly. "
-        "I have to make a final decision by Monday."
-    )
-
-    user_post = st.text_area(
-        "Your Reddit post",
-        value=default_sample,
-        height=170,
-        placeholder="Paste the Reddit post here...",
-        label_visibility="visible",
-    )
-
-    st.caption(f"INPUT LENGTH: {len(user_post):,} CHARACTERS")
-
-    generate_button = st.button(
-        "GENERATE SUMMARIES  →",
-        type="primary",
-        use_container_width=True,
-        disabled=not user_post.strip(),
-    )
-
-
-# ============================================================
-# GENERATION (ON-DEMAND SEQUENTIAL EXECUTION)
-# ============================================================
-
-if "comparison_results" not in st.session_state:
-    st.session_state.comparison_results = None
-
-if generate_button:
-    formatted_prompt = user_post.strip() + "\nTL;DR:"
-
+    model = None
     try:
-        progress = st.progress(0, text="Generating SFT summary...")
-        
-        # 1. SFT Inference
-        sft_summary = run_single_model_generation("sft", formatted_prompt, tokenizer, device)
-        progress.progress(25, text="Generating PPO summary...")
+        progress.progress(start, text=f"Loading {stage.upper()} checkpoint...")
+        model = load_causal_model(stage)
 
-        # 2. PPO Inference
-        ppo_summary = run_single_model_generation("ppo", formatted_prompt, tokenizer, device)
-        progress.progress(50, text="Generating DPO summary...")
-
-        # 3. DPO Inference
-        dpo_summary = run_single_model_generation("dpo", formatted_prompt, tokenizer, device)
-        progress.progress(75, text="Evaluating reward scores...")
-
-        # 4. Reward Model Scoring
-        scores = score_summaries_with_reward_model(
-            formatted_prompt,
-            [sft_summary, ppo_summary, dpo_summary],
-            tokenizer,
-            device,
+        progress.progress(
+            min(start + 5, end),
+            text=f"Generating {stage.upper()} summary...",
         )
-        sft_score, ppo_score, dpo_score = scores
-        progress.progress(100, text="Evaluation complete!")
+        summary = generate_summary(model, tokenizer, prompt)
 
-        st.session_state.comparison_results = {
-            "sft_summary": sft_summary,
-            "ppo_summary": ppo_summary,
-            "dpo_summary": dpo_summary,
-            "sft_score": sft_score,
-            "ppo_score": ppo_score,
-            "dpo_score": dpo_score,
-        }
+        return summary
+    finally:
+        if model is not None:
+            del model
+        gc.collect()
 
-    except Exception as error:
-        st.error("Generation or reward evaluation failed.")
-        with st.expander("Technical details"):
-            st.exception(error)
-
-
-# ============================================================
-# RESULT CARDS
-# ============================================================
 
 def render_result_card(name, stage, method, summary, score, baseline=None):
     if baseline is None:
@@ -745,6 +372,220 @@ def render_result_card(name, stage, method, summary, score, baseline=None):
     )
 
 
+# ============================================================
+# BRAND BAR AND HERO
+# ============================================================
+
+st.markdown(
+    """
+    <div class="brandbar">
+        <div class="brand-left">
+            <div class="brand-mark">S</div>
+            <div class="brand-name">SMOLLM2 / SUMMARY STUDIO</div>
+        </div>
+        <div class="online-pill"><span class="online-dot"></span> MODEL INTERFACE</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+hero_left, hero_right = st.columns([1.05, 1], gap="large")
+
+with hero_left:
+    st.markdown(
+        """
+        <div class="hero-kicker">TEXT → SUMMARY / ALIGNMENT LAB</div>
+        <div class="hero-title">Make your<br>words<br><span class="pink">matter.</span></div>
+        <div class="hero-copy">
+            Explore how human-preference alignment changes the way a
+            language model summarizes Reddit discussions. Compare
+            supervised fine-tuning, PPO, and DPO — side by side.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with hero_right:
+    st.markdown(
+        """
+        <div class="hero-art">
+            <div class="sticker">LESS<br>NOISE.<br>MORE<br>MEANING.</div>
+            <div class="code-window">
+                <div class="code-top">alignment_pipeline.py / preview</div>
+                <div class="code-body">
+                    <span class="code-purple">INPUT</span> = <span class="code-green">reddit_post</span><br>
+                    <span class="code-purple">SFT</span> → <span class="code-pink">PPO</span> → <span class="code-yellow">DPO</span><br><br>
+                    <span class="code-purple">GENERATE</span>(post)<br>
+                    <span class="code-purple">SCORE</span>(summary, reward_model)<br>
+                    <span class="code-green">COMPARE</span>(all_outputs)
+                </div>
+            </div>
+            <div class="mini-note">01<br>GENERATE<br>02<br>COMPARE</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.markdown(
+    """
+    <div class="feature-strip">
+        <div class="feature"><span class="feature-num">01</span> Natural-language<br>Reddit input</div>
+        <div class="feature"><span class="feature-num">02</span> Three alignment<br>approaches</div>
+        <div class="feature"><span class="feature-num">03</span> Reward-scored<br>summaries</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# TOKENIZER
+# ============================================================
+
+try:
+    tokenizer = load_tokenizer()
+except Exception as error:
+    st.error("The tokenizer could not be initialized.")
+    with st.expander("Technical details"):
+        st.exception(error)
+    st.stop()
+
+
+# ============================================================
+# QUERY STUDIO
+# ============================================================
+
+st.markdown(
+    """
+    <div class="studio-grid">
+        <div>
+            <div class="eyebrow">QUERY STUDIO / 01</div>
+            <div class="studio-title">What do<br>you want<br><span class="pink">summarized?</span></div>
+            <div class="studio-description">
+                Paste a Reddit post. Each model generates a summary in turn.
+                The trained reward model then scores all three outputs.
+            </div>
+            <div class="tip">
+                <span class="tip-mark">i</span>
+                <span>Tip: Include the full post and its relevant context.
+                The application appends the TL;DR prompt automatically.</span>
+            </div>
+        </div>
+        <div></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+default_sample = (
+    "I have been working at my current software company for two years "
+    "as a junior developer. I recently received a job offer from another "
+    "firm that pays 25% more salary, but requires full in-office attendance "
+    "with a 45-minute commute each way. My current job is 100% remote, "
+    "and I value my flexibility and work-life balance greatly. "
+    "I have to make a final decision by Monday."
+)
+
+with st.container(border=True):
+    st.markdown(
+        """
+        <div class="form-panel-top">
+            <span>INPUT_01 / REDDIT POST</span>
+            <span class="required">REQUIRED</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    user_post = st.text_area(
+        "Your Reddit post",
+        value=default_sample,
+        height=170,
+        placeholder="Paste the Reddit post here...",
+    )
+
+    st.caption(f"INPUT LENGTH: {len(user_post):,} CHARACTERS")
+
+    generate_button = st.button(
+        "GENERATE SUMMARIES  →",
+        type="primary",
+        use_container_width=True,
+        disabled=not user_post.strip(),
+    )
+
+
+# ============================================================
+# RUN SEQUENTIAL INFERENCE
+# ============================================================
+
+if "comparison_results" not in st.session_state:
+    st.session_state.comparison_results = None
+
+if generate_button:
+    prompt = user_post.strip() + "\nTL;DR:"
+    progress = st.progress(0, text="Preparing inference...")
+
+    try:
+        # Stage 1: SFT
+        sft_summary = generate_with_one_model(
+            "sft", tokenizer, prompt, progress, 0, 25
+        )
+
+        # Stage 2: PPO
+        ppo_summary = generate_with_one_model(
+            "ppo", tokenizer, prompt, progress, 25, 50
+        )
+
+        # Stage 3: DPO
+        dpo_summary = generate_with_one_model(
+            "dpo", tokenizer, prompt, progress, 50, 75
+        )
+
+        # Stage 4: load reward model only after generation models are gone.
+        progress.progress(78, text="Loading reward model...")
+        reward_model = load_reward_model()
+
+        try:
+            progress.progress(88, text="Scoring generated summaries...")
+
+            sft_score = compute_reward_score(
+                reward_model, tokenizer, prompt, sft_summary
+            )
+            ppo_score = compute_reward_score(
+                reward_model, tokenizer, prompt, ppo_summary
+            )
+            dpo_score = compute_reward_score(
+                reward_model, tokenizer, prompt, dpo_summary
+            )
+        finally:
+            del reward_model
+            gc.collect()
+
+        st.session_state.comparison_results = {
+            "sft_summary": sft_summary,
+            "ppo_summary": ppo_summary,
+            "dpo_summary": dpo_summary,
+            "sft_score": sft_score,
+            "ppo_score": ppo_score,
+            "dpo_score": dpo_score,
+        }
+
+        progress.progress(100, text="Comparison complete.")
+
+    except Exception as error:
+        gc.collect()
+        st.error(
+            "Inference failed. Check the checkpoint files and available "
+            "memory, then inspect the technical details below."
+        )
+        with st.expander("Technical details"):
+            st.exception(error)
+
+
+# ============================================================
+# RESULTS
+# ============================================================
+
 results = st.session_state.comparison_results
 
 st.markdown(
@@ -772,22 +613,22 @@ if results is None:
         unsafe_allow_html=True,
     )
 else:
-    c1, c2, c3 = st.columns(3, gap="medium")
+    col1, col2, col3 = st.columns(3, gap="medium")
 
-    with c1:
+    with col1:
         render_result_card(
             "SFT", "STAGE 01", "SUPERVISED FINE-TUNING",
             results["sft_summary"], results["sft_score"]
         )
 
-    with c2:
+    with col2:
         render_result_card(
             "PPO", "STAGE 03", "PROXIMAL POLICY OPTIMIZATION",
             results["ppo_summary"], results["ppo_score"],
             results["sft_score"]
         )
 
-    with c3:
+    with col3:
         render_result_card(
             "DPO", "STAGE 04", "DIRECT PREFERENCE OPTIMIZATION",
             results["dpo_summary"], results["dpo_score"],
